@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fileToBase64 } from './utils/file';
+import { parseSchedulePdf } from './utils/pdfParser';
 import { downloadICS, getGoogleCalendarLink } from './utils/ics';
-import { ExamWithSelection, UploadStatus, CourseCategory, Language, Theme } from './types';
+import { Exam, ExamWithSelection, UploadStatus, CourseCategory, Language, Theme } from './types';
 import { ExamList } from './components/ExamList';
-import { translations, toGreekUpperCase } from './utils/i18n';
+import { translations, toGreekUpperCase, formatDate } from './utils/i18n';
 
 type SortField = 'date' | 'name' | 'semester';
 type SortOrder = 'asc' | 'desc';
 
 const STORAGE_KEY = 'ceid_scheduler_last_exams';
 const DEFAULT_REMINDERS = [60]; // 1 hour by default
+const LOW_COUNT_THRESHOLD = 20;
 
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
@@ -87,7 +88,8 @@ function AppContent() {
   const [activeFilters, setActiveFilters] = useState<CourseCategory[]>([]);
   const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showMissingFileModal, setShowMissingFileModal] = useState(false);
+  const [unnamedExams, setUnnamedExams] = useState<ExamWithSelection[]>([]);
+  const [showUnnamedModal, setShowUnnamedModal] = useState(false);
   const [foundCount, setFoundCount] = useState(0);
   const [globalReminder, setGlobalReminder] = useState<number>(60); 
   const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -107,36 +109,6 @@ function AppContent() {
   });
 
   const t = translations[language];
-
-  // Helper for progress simulation
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (status === 'uploading' || status === 'parsing') {
-      setAnalysisProgress(0);
-      interval = setInterval(() => {
-        setAnalysisProgress(prev => {
-          if (prev >= 99) return prev;
-          
-          let increment = 0;
-          if (status === 'uploading') {
-            // Uploading: Reach ~90% in about 3 seconds
-            // 3s / 0.4s = 7.5 ticks. 90 / 7.5 = 12% per tick.
-            increment = Math.random() * 5 + 10;
-          } else {
-            // Parsing: Slightly faster deceleration to reach ~99% within 3m 10s
-            const remaining = 100 - prev;
-            // Slightly reduced factors to speed up progress by ~5-10%
-            const factor = 310 + (prev * 4.2); 
-            increment = (remaining / factor) * (Math.random() * 0.3 + 0.85);
-          }
-          return Math.min(prev + increment, 99);
-        });
-      }, 400);
-    } else {
-      setAnalysisProgress(0);
-    }
-    return () => clearInterval(interval);
-  }, [status]);
 
   // Load persisted data on mount
   useEffect(() => {
@@ -255,91 +227,61 @@ function AppContent() {
   const selectedCount = exams.filter(e => e.selected).length;
 
   // Handlers
+  const toSelectable = (list: Exam[]): ExamWithSelection[] =>
+    list.map(e => ({ ...e, selected: true, reminders: DEFAULT_REMINDERS, category: e.category || CourseCategory.UNKNOWN }));
+
+  // Last step after parsing: warn when suspiciously few exams were found.
+  const finishImport = (list: ExamWithSelection[]) => {
+    setFoundCount(list.length);
+    setOriginalExams(list);
+    if (list.length < LOW_COUNT_THRESHOLD) {
+      setStatus('confirming');
+      setShowConfirmModal(true);
+    } else {
+      setExams(list);
+      setStatus('success');
+    }
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
 
-    setStatus('uploading');
+    setStatus('parsing');
     setAnalysisProgress(0);
     setErrorMessage(null);
-    
-    try {
-      const base64 = await fileToBase64(file);
-      
-      // Artificial delay for better "feel" of uploading
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setStatus('parsing');
-      setAnalysisProgress(0);
-      
-      const response = await fetch('/api/parse-exams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ base64Data: base64 })
-      });
 
-      if (!response.ok) {
-        let errData;
-        try {
-          errData = await response.json();
-        } catch {
-          // ignore
-        }
-        throw new Error(errData?.error?.message || `Error ${response.status}: Failed to parse PDF`);
+    try {
+      // The PDF is read locally in the browser; nothing is uploaded anywhere.
+      const data = await file.arrayBuffer();
+      const result = await parseSchedulePdf(data, f => setAnalysisProgress(f * 100));
+
+      if (result.exams.length === 0 && result.unnamed.length === 0) {
+        throw new Error(t.noExamsInFile);
       }
 
-      const { exams: result } = await response.json();
-      
-      const examsWithSelection = result.map(e => ({ 
-        ...e, 
-        selected: true,
-        reminders: DEFAULT_REMINDERS,
-        category: e.category || CourseCategory.UNKNOWN
-      }));
-      
-      setFoundCount(result.length);
-      setOriginalExams(examsWithSelection);
-
-      if (result.length < 50) {
+      const named = toSelectable(result.exams);
+      if (result.unnamed.length > 0) {
+        setOriginalExams(named);
+        setUnnamedExams(toSelectable(result.unnamed.map(e => ({ ...e, name: t.unknownCourse }))));
         setStatus('confirming');
-        setShowConfirmModal(true);
+        setShowUnnamedModal(true);
       } else {
-        setExams(examsWithSelection);
-        setStatus('success');
+        finishImport(named);
       }
     } catch (error: any) {
       console.error(error);
       setStatus('error');
-      if (error.message === 'RATE_LIMIT_ERROR') {
-        setErrorMessage((translations[language] as any).rateLimitError);
-      } else {
-        setErrorMessage(error.message || 'Unknown error occurred');
-      }
+      setErrorMessage(error?.message || 'Unknown error occurred');
     }
-    
-    event.target.value = '';
   };
 
-  const handleAppDownload = (e: React.MouseEvent, url: string, filename: string) => {
-    e.preventDefault();
-    fetch(url, { method: 'HEAD' })
-      .then(res => {
-        if (res.ok) {
-           const link = document.createElement('a');
-           link.href = url;
-           link.download = filename;
-           document.body.appendChild(link);
-           link.click();
-           document.body.removeChild(link);
-        } else {
-           setShowMissingFileModal(true);
-        }
-      })
-      .catch(() => {
-         setShowMissingFileModal(true);
-      });
+  const handleUnnamedChoice = (include: boolean) => {
+    setShowUnnamedModal(false);
+    const list = include ? [...originalExams, ...unnamedExams] : originalExams;
+    setUnnamedExams([]);
+    finishImport(list);
   };
 
   const handleConfirmCount = (confirmed: boolean) => {
@@ -465,62 +407,23 @@ function AppContent() {
           </div>
         )}
 
-        {/* Apps Download Section */}
-        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700">
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{t.appsDescription}</p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {/* Android Button - Uses custom handler */}
-            <button 
-              onClick={(e) => handleAppDownload(e, '/ceid-scheduler.apk', 'ceid-scheduler.apk')}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all hover:scale-[1.02] cursor-pointer"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600 dark:text-green-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M16.603 12.015l2.096-3.63a.625.625 0 10-1.083-.625l-2.122 3.675A9.873 9.873 0 0012 10.25c-1.284 0-2.5.253-3.626.71L6.376 7.425a.625.625 0 00-1.05.688l2.052 3.553A10.603 10.603 0 003 18.25c0 .167.01.332.03.496h17.94c.02-.164.03-.33.03-.496a10.6 10.6 0 00-4.397-6.235zM8.5 16.5a1 1 0 110-2 1 1 0 010 2zm7 0a1 1 0 110-2 1 1 0 010 2z" />
-              </svg>
-              {t.downloadApk}
-            </button>
-            
-            {/* Desktop Button - Uses custom handler */}
-            <button 
-              onClick={(e) => handleAppDownload(e, '/ceid-scheduler-setup.exe', 'ceid-scheduler-setup.exe')}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all hover:scale-[1.02] cursor-pointer"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M0 3.449L9.75 2.1v9.451H0V3.449zm10.949-1.606L24 0v11.023H10.949V1.843zm-10.949 9.967H9.75V21.9L0 20.551v-8.741zm10.949 0H24V24l-13.051-1.843v-10.314z"/>
-              </svg>
-              {t.downloadDesktop}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
 
-  const renderLoading = () => {
-    const isUploading = status === 'uploading';
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
-        <div className="relative w-24 h-24 mb-6 flex items-center justify-center">
-          <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-100 dark:border-slate-700 rounded-full"></div>
-          <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-600 dark:border-indigo-400 rounded-full border-t-transparent animate-spin"></div>
-          <div className="text-indigo-600 dark:text-indigo-400 font-bold text-lg animate-pulse">
-            {Math.round(analysisProgress)}%
-          </div>
+  const renderLoading = () => (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
+      <div className="relative w-24 h-24 mb-6 flex items-center justify-center">
+        <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-100 dark:border-slate-700 rounded-full"></div>
+        <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-600 dark:border-indigo-400 rounded-full border-t-transparent animate-spin"></div>
+        <div className="text-indigo-600 dark:text-indigo-400 font-bold text-lg">
+          {Math.round(analysisProgress)}%
         </div>
-        <h3 className="text-xl font-semibold text-slate-800 dark:text-white">
-          {isUploading ? (t as any).uploadingTitle : t.analyzingTitle}
-        </h3>
-        <p className="text-slate-500 dark:text-slate-400 mt-2">
-          {isUploading ? (t as any).uploadingDesc : t.analyzingDesc}
-        </p>
-        {!isUploading && (
-          <p className="text-indigo-600/70 dark:text-indigo-400/70 text-xs mt-4 font-medium italic">
-            {(t as any).averageTime}
-          </p>
-        )}
       </div>
-    );
-  };
+      <h3 className="text-xl font-semibold text-slate-800 dark:text-white">{t.analyzingTitle}</h3>
+      <p className="text-slate-500 dark:text-slate-400 mt-2">{t.analyzingDesc}</p>
+    </div>
+  );
 
   const renderDashboard = () => (
     <div className="pb-24">
@@ -747,8 +650,8 @@ function AppContent() {
 
       <main>
         {status === 'idle' && renderUpload()}
-        {(status === 'parsing' || status === 'uploading') && renderLoading()}
-        {status === 'confirming' && (
+        {status === 'parsing' && renderLoading()}
+        {status === 'confirming' && showConfirmModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
                <div className="text-center">
@@ -780,26 +683,39 @@ function AppContent() {
           </div>
         )}
         
-        {/* Missing File Modal */}
-        {showMissingFileModal && (
+        {/* Cells with a room/time but no course name */}
+        {status === 'confirming' && showUnnamedModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in duration-200">
+             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700">
                <div className="text-center">
-                  <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t.fileNotFound}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 whitespace-pre-line text-left bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-                    {t.fileNotFoundDesc}
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t.unnamedTitle}</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 whitespace-pre-line">
+                    {t.unnamedDesc.replace('{count}', unnamedExams.length.toString())}
                   </p>
-                  <button 
-                     onClick={() => setShowMissingFileModal(false)}
-                     className="w-full px-4 py-2 bg-slate-800 dark:bg-slate-700 text-white font-semibold rounded-xl hover:bg-slate-900 dark:hover:bg-slate-600 transition-colors"
-                  >
-                     {t.close}
-                  </button>
+                  <ul className="text-xs text-left text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700 mb-6 max-h-40 overflow-auto space-y-1">
+                    {unnamedExams.map(e => (
+                      <li key={e.id}>{formatDate(e.date, t.locale)} · {e.time} · {e.room} · {e.semester}</li>
+                    ))}
+                  </ul>
+                  <div className="flex gap-3">
+                     <button
+                       onClick={() => handleUnnamedChoice(false)}
+                       className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                     >
+                       {t.unnamedSkip}
+                     </button>
+                     <button
+                       onClick={() => handleUnnamedChoice(true)}
+                       className="flex-1 px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+                     >
+                       {t.unnamedInclude}
+                     </button>
+                  </div>
                </div>
              </div>
           </div>

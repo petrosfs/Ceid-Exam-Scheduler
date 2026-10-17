@@ -25,7 +25,7 @@ export interface ExamWithSelection extends Exam {
   reminders: number[]; // Array of reminder minutes
 }
 
-export type UploadStatus = 'idle' | 'uploading' | 'parsing' | 'confirming' | 'success' | 'error';
+export type UploadStatus = 'idle' | 'parsing' | 'confirming' | 'success' | 'error';
 
 export interface ParseResult {
   exams: Exam[];

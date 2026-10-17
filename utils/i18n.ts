@@ -4,14 +4,10 @@ export const translations = {
   el: {
     appTitle: "Πρόγραμμα CEID",
     uploadTitle: "Μεταφόρτωση Προγράμματος",
-    uploadDesc: "Επιλέξτε το αρχείο PDF που δόθηκε από τη γραμματεία.\nΘα εξαγάγουμε τα μαθήματα για εσάς.",
+    uploadDesc: "Επιλέξτε το PDF με το πρόγραμμα εξεταστικής του τμήματος.\nΗ ανάγνωση γίνεται μόνο στη συσκευή σας· το αρχείο δεν ανεβαίνει πουθενά.",
     selectFile: "Επιλογή Αρχείου PDF",
-    uploadingTitle: "Ανέβασμα Αρχείου...",
-    uploadingDesc: "Προετοιμασία του αρχείου για επεξεργασία. Παρακαλώ περιμένετε.",
     analyzingTitle: "Ανάλυση Προγράμματος...",
     analyzingDesc: "Αναγνώριση μαθημάτων, ημερομηνιών και αιθουσών. Παρακαλώ περιμένετε.",
-    averageTime: "Μέσος χρόνος ανάλυσης: 3-5 λεπτά",
-    rateLimitError: "Το σύστημα ανάλυσης είναι προσωρινά υπερφορτωμένο (Quota Exceeded). Παρακαλώ περιμένετε 2-3 λεπτά και δοκιμάστε ξανά.",
     searchPlaceholder: "Αναζήτηση μαθήματος, αίθουσας, εξαμήνου...",
     selectAll: "Επιλογή Όλων",
     deselectAll: "Αποεπιλογή Όλων",
@@ -30,7 +26,13 @@ export const translations = {
     duration: "Διάρκεια",
     minutes: "λ",
     lowCountTitle: "Εντοπίστηκαν λίγα μαθήματα",
-    lowCountDesc: "Βρέθηκαν μόνο {count} μαθήματα στο αρχείο. Συνήθως το πρόγραμμα περιέχει 50+ μαθήματα.\n\nΑνεβάσατε το σωστό αρχείο ή είναι μερικό πρόγραμμα;",
+    lowCountDesc: "Βρέθηκαν μόνο {count} μαθήματα στο αρχείο.\n\nΕίναι το σωστό αρχείο ή μερικό πρόγραμμα;",
+    noExamsInFile: "Δεν βρέθηκαν εξετάσεις. Βεβαιωθείτε ότι είναι το PDF του προγράμματος εξεταστικής του CEID.",
+    unknownCourse: "Άγνωστο μάθημα",
+    unnamedTitle: "Κελιά χωρίς όνομα μαθήματος",
+    unnamedDesc: "Το PDF έχει {count} κελιά με ώρα και αίθουσα αλλά χωρίς όνομα μαθήματος.\nΘέλετε να εμφανιστούν ως «Άγνωστο μάθημα»;",
+    unnamedSkip: "Παράλειψη",
+    unnamedInclude: "Εμφάνιση",
     tryAgain: "Όχι, ξαναπροσπαθήστε",
     continue: "Ναι, συνέχεια",
     uploadNewShort: "Νέο",
@@ -53,15 +55,6 @@ export const translations = {
     reminder1d: "1 μέρα πριν",
     reminder2d: "2 μέρες πριν",
 
-    // Apps
-    appsDescription: "Κατεβάστε την εφαρμογή για τη συσκευή σας:",
-    downloadApk: "Android (.apk)",
-    downloadDesktop: "Windows (.exe)",
-    
-    // File Not Found Modal
-    fileNotFound: "Το αρχείο δεν βρέθηκε",
-    fileNotFoundDesc: "Το αρχείο εγκατάστασης δεν εντοπίστηκε στον διακομιστή.\n\nΟδηγίες εγκατάστασης:\nΤοποθετήστε τα αρχεία .apk/.exe στο φάκελο 'public' της εφαρμογής.",
-    close: "Κλείσιμο",
 
     // Sorting
     sortBy: "Ταξινόμηση:",
@@ -78,14 +71,10 @@ export const translations = {
   en: {
     appTitle: "CEID Scheduler",
     uploadTitle: "Upload Exam Schedule",
-    uploadDesc: "Select the PDF file provided by the CEID department.\nWe'll extract the exams for you.",
+    uploadDesc: "Select the department's exam schedule PDF.\nIt is read only on your device; the file is never uploaded.",
     selectFile: "Select PDF File",
-    uploadingTitle: "Uploading File...",
-    uploadingDesc: "Preparing the file for processing. Please wait.",
     analyzingTitle: "Analyzing Schedule...",
     analyzingDesc: "Identifying exams, dates, and rooms. Please wait.",
-    averageTime: "Average analysis time: 3-5 minutes",
-    rateLimitError: "The analysis system is temporarily overloaded (Quota Exceeded). Please wait 2-3 minutes and try again.",
     searchPlaceholder: "Search exams, rooms, semesters...",
     selectAll: "Select All",
     deselectAll: "Deselect All",
@@ -104,7 +93,13 @@ export const translations = {
     duration: "Duration",
     minutes: "m",
     lowCountTitle: "Low Exam Count Detected",
-    lowCountDesc: "We only found {count} exams in the file. Usually, the schedule contains 50+ exams.\n\nDid you upload the correct file, or is this a partial schedule?",
+    lowCountDesc: "We only found {count} exams in the file.\n\nIs this the correct file, or a partial schedule?",
+    noExamsInFile: "No exams were found. Make sure this is the CEID exam schedule PDF.",
+    unknownCourse: "Unknown course",
+    unnamedTitle: "Cells without a course name",
+    unnamedDesc: "The PDF has {count} cells with a time and room but no course name.\nShow them as \"Unknown course\"?",
+    unnamedSkip: "Skip",
+    unnamedInclude: "Show",
     tryAgain: "No, Try Again",
     continue: "Yes, Continue",
     uploadNewShort: "New Upload",
@@ -127,15 +122,6 @@ export const translations = {
     reminder1d: "1d before",
     reminder2d: "2d before",
 
-    // Apps
-    appsDescription: "Download the app for your device:",
-    downloadApk: "Android (.apk)",
-    downloadDesktop: "Windows (.exe)",
-
-    // File Not Found Modal
-    fileNotFound: "File Not Found",
-    fileNotFoundDesc: "The installation file was not found on the server.\n\nSetup instructions:\nPlace the .apk/.exe files in the 'public' folder of the application.",
-    close: "Close",
 
     // Sorting
     sortBy: "Sort by:",

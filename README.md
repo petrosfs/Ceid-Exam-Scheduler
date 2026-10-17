@@ -1,20 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# CEID Exam Scheduler
 
-# Run and deploy your AI Studio app
+Φτιάξε το προσωπικό σου πρόγραμμα εξεταστικής από το PDF του Τμήματος Μηχανικών Η/Υ & Πληροφορικής (CEID) του Πανεπιστημίου Πατρών.
 
-This contains everything you need to run your app locally.
+**Δοκίμασέ το:** https://petrosfs.github.io/Ceid-Exam-Scheduler/
 
-View your app in AI Studio: https://ai.studio/apps/54313ead-7e2a-40ed-89c3-b0c8b958d767
+## Τι κάνει
 
-## Run Locally
+- Διαβάζει το PDF του προγράμματος εξεταστικής (aSc Timetables) και βγάζει όλες τις εξετάσεις: ημερομηνία, ώρα, διάρκεια, κωδικό, μάθημα, αίθουσα, εξάμηνο.
+- Επιλέγεις τα μαθήματά σου, με αναζήτηση, φίλτρα και ταξινόμηση.
+- Εξαγωγή σε αρχείο `.ics` ή προσθήκη στο Google Calendar, με υπενθυμίσεις.
 
-**Prerequisites:**  Node.js
+## Ιδιωτικότητα
 
+Το PDF διαβάζεται **μόνο μέσα στον browser σου** με το [pdf.js](https://mozilla.github.io/pdf.js/). Δεν ανεβαίνει σε κανέναν server, δεν χρησιμοποιείται AI και δεν χρειάζεται λογαριασμός ή κλειδί API.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Τοπική εκτέλεση
+
+Απαιτείται Node.js 20+.
+
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # στατική έκδοση στον φάκελο dist/
+```
+
+## Πώς διαβάζεται το PDF
+
+Οι σελίδες κάθε εξαμήνου είναι πλέγμα με εβδομάδες/ημέρες στις στήλες και ώρες στις γραμμές. Ο κώδικας στο `utils/pdfParser.ts`:
+
+1. βρίσκει τις επικεφαλίδες (εβδομάδες, ημέρες, ώρες) από τις θέσεις του κειμένου,
+2. βρίσκει τα συγχωνευμένα κελιά από τις γραμμές που είναι σχεδιασμένες στη σελίδα, ώστε να υπολογίσει τη διάρκεια,
+3. παίρνει το έτος από τη σελίδα ανακοινώσεων (π.χ. «εξεταστική Ιανουαρίου-Φεβρουαρίου 2026»).
+
+Αν το τμήμα αλλάξει τη μορφή του PDF, ο κώδικας ίσως χρειαστεί προσαρμογή.
+
+## Άδεια
+
+[MIT](LICENSE)
