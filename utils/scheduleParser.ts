@@ -1,13 +1,11 @@
-// Reads CEID exam schedule PDFs (exported from aSc Timetables) entirely in the browser.
+// Parses CEID exam schedules (exported from aSc Timetables) from plain page data.
 // No AI and no server: the grid is reconstructed from the text positions and the drawn lines.
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Exam, CourseCategory } from '../types';
 
-type PdfDoc = pdfjs.PDFDocumentProxy;
-type PdfPage = pdfjs.PDFPageProxy;
-
-interface TextItem { str: string; x: number; y: number; w: number; size: number }
-interface HSeg { x0: number; x1: number; y: number }
+export interface TextItem { str: string; x: number; y: number; w: number; size: number }
+export interface HSeg { x0: number; x1: number; y: number }
+/** One PDF page: size, text pieces and horizontal lines, in PDF user space (y grows upwards). */
+export interface PageData { width: number; height: number; items: TextItem[]; segs: HSeg[] }
 
 export interface ParseOutput {
   exams: Exam[];       // exams with a course name
@@ -19,71 +17,6 @@ const TONOS = /[άέήίόύώΐΰΆΈΉΊΌΎΏ]/;
 // Short Greek words that are never the tail of a word broken across lines.
 const STANDALONE = new Set(['και', 'σε', 'με', 'στη', 'στην', 'στο', 'στον', 'στους', 'στις', 'στα',
   'των', 'του', 'της', 'τη', 'την', 'το', 'τον', 'τα', 'οι', 'η', 'ο', 'για', 'από', 'ή']);
-
-// ---------- geometry helpers ----------
-
-type Matrix = [number, number, number, number, number, number];
-const mul = (m: Matrix, n: Matrix): Matrix => [
-  m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3],
-  m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3],
-  m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5],
-];
-const apply = (m: Matrix, x: number, y: number) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-
-/** Horizontal line segments drawn on the page, in PDF user space (y grows upwards). */
-async function horizontalSegments(page: PdfPage): Promise<HSeg[]> {
-  const { OPS } = pdfjs;
-  const ops = await page.getOperatorList();
-  const segs: HSeg[] = [];
-  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
-  const stack: Matrix[] = [];
-  for (let i = 0; i < ops.fnArray.length; i++) {
-    const fn = ops.fnArray[i];
-    const args: any = ops.argsArray[i];
-    if (fn === OPS.save) stack.push(ctm);
-    else if (fn === OPS.restore) ctm = stack.pop() ?? [1, 0, 0, 1, 0, 0];
-    else if (fn === OPS.transform) ctm = mul(args as Matrix, ctm);
-    else if (fn === OPS.paintFormXObjectBegin) {
-      stack.push(ctm);
-      if (Array.isArray(args?.[0]) && args[0].length === 6) ctm = mul(args[0] as Matrix, ctm);
-    } else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? [1, 0, 0, 1, 0, 0];
-    else if (fn === OPS.constructPath) {
-      // pdf.js 5.x: [paintOp, [Float32Array of DrawOPS], minMax]
-      const data = args?.[1]?.[0];
-      if (!data || typeof data.length !== 'number') continue;
-      let cx = 0, cy = 0, sx = 0, sy = 0, k = 0;
-      const push = (x: number, y: number) => {
-        const [ax, ay] = apply(ctm, cx, cy);
-        const [bx, by] = apply(ctm, x, y);
-        if (Math.abs(ay - by) < 0.5 && Math.abs(ax - bx) > 1) {
-          segs.push({ x0: Math.min(ax, bx), x1: Math.max(ax, bx), y: (ay + by) / 2 });
-        }
-      };
-      while (k < data.length) {
-        const op = data[k++];
-        if (op === 0) { cx = sx = data[k++]; cy = sy = data[k++]; }          // moveTo
-        else if (op === 1) { const x = data[k++], y = data[k++]; push(x, y); cx = x; cy = y; } // lineTo
-        else if (op === 2) { k += 4; cx = data[k++]; cy = data[k++]; }       // curveTo
-        else if (op === 3) { k += 2; cx = data[k++]; cy = data[k++]; }       // quadraticCurveTo
-        else if (op === 4) { push(sx, sy); cx = sx; cy = sy; }               // closePath
-        else break;
-      }
-    }
-  }
-  return segs;
-}
-
-async function textItems(page: PdfPage): Promise<TextItem[]> {
-  const tc = await page.getTextContent();
-  const out: TextItem[] = [];
-  for (const it of tc.items as any[]) {
-    const str = (it.str ?? '').replace(/\s+/g, ' ').trim();
-    if (!str) continue;
-    const t = it.transform as number[];
-    out.push({ str, x: t[4], y: t[5], w: it.width, size: Math.hypot(t[2], t[3]) || it.height });
-  }
-  return out;
-}
 
 // ---------- text helpers ----------
 
@@ -173,10 +106,10 @@ function semesterOf(title: string): string {
 
 interface YearInfo { year?: number; startsInJanuary?: boolean; createdYear?: number }
 
-async function detectYear(doc: PdfDoc): Promise<YearInfo> {
+function detectYear(pages: PageData[]): YearInfo {
   const info: YearInfo = {};
   // Rebuild the text line by line; pdf.js may split a word into touching pieces ("202" + "6.").
-  const items = (await textItems(await doc.getPage(1))).sort((a, b) => b.y - a.y || a.x - b.x);
+  const items = [...(pages[0]?.items ?? [])].sort((a, b) => b.y - a.y || a.x - b.x);
   let text = '';
   items.forEach((t, i) => {
     const prev = items[i - 1];
@@ -190,8 +123,9 @@ async function detectYear(doc: PdfDoc): Promise<YearInfo> {
     info.startsInJanuary = /^\s*Ιανουαρ/iu.test(m[1]);
   }
   // Fallback: the footer "Δημιουργία Προγράμματος: d/m/yyyy" (day/month order is not consistent, so only the year is used).
-  for (let p = 2; p <= Math.min(doc.numPages, 3) && !info.createdYear; p++) {
-    for (const it of await textItems(await doc.getPage(p))) {
+  for (const page of pages.slice(1, 3)) {
+    if (info.createdYear) break;
+    for (const it of page.items) {
       const c = it.str.match(/Δημιουργία\s+Προγράμματος:?\s*\d{1,2}\/\d{1,2}\/(\d{4})/u);
       if (c) { info.createdYear = Number(c[1]); break; }
     }
@@ -211,11 +145,11 @@ const iso = (d: Date) =>
 
 // ---------- page parsing ----------
 
-async function parsePage(page: PdfPage, items: TextItem[], pageNo: number, years: YearInfo, vocab: Set<string>): Promise<Exam[]> {
-  const [W, H] = [page.view[2], page.view[3]];
+function parsePage(page: PageData, pageNo: number, years: YearInfo, vocab: Set<string>): Exam[] {
+  const { width: W, height: H, items, segs } = page;
 
   const titleItems = items.filter(t => t.y > H * 0.88);
-  const title = titleItems.sort((a, b) => a.x - b.x).map(t => t.str).join(' ').trim();
+  const title = [...titleItems].sort((a, b) => a.x - b.x).map(t => t.str).join(' ').trim();
   if (/^Εβδομάδα/u.test(title)) return []; // weekly overview pages repeat the same exams
 
   const days = items.filter(t => DAYS.includes(t.str)).sort((a, b) => a.x - b.x);
@@ -248,7 +182,6 @@ async function parsePage(page: PdfPage, items: TextItem[], pageNo: number, years
   });
 
   const colCenters = days.map(centerX);
-  const segs = await horizontalSegments(page);
   const category = categoryOf(title);
   const semester = semesterOf(title);
   const exams: Exam[] = [];
@@ -315,42 +248,20 @@ async function parsePage(page: PdfPage, items: TextItem[], pageNo: number, years
   return exams;
 }
 
-export async function parseSchedulePdf(
-  data: ArrayBuffer,
-  onProgress?: (fraction: number) => void,
-): Promise<ParseOutput> {
-  // The file is only read for its text and drawn lines; nothing in it is rendered or executed.
-  const task = pdfjs.getDocument({ data: new Uint8Array(data), enableXfa: false });
-  const doc = await task.promise;
-  try {
-    const years = await detectYear(doc);
-    const pages: PdfPage[] = [];
-    const texts: TextItem[][] = [];
-    for (let p = 1; p <= doc.numPages; p++) {
-      const page = await doc.getPage(p);
-      pages.push(page);
-      texts.push(await textItems(page));
-      onProgress?.(0.4 * p / doc.numPages);
-    }
-    const vocab = buildVocabulary(texts);
-    const all: Exam[] = [];
-    for (let p = 0; p < pages.length; p++) {
-      all.push(...await parsePage(pages[p], texts[p], p + 1, years, vocab));
-      onProgress?.(0.4 + 0.6 * (p + 1) / pages.length);
-    }
-    // The same exam can appear on several pages (e.g. old and new curriculum); keep the first.
-    const seen = new Set<string>();
-    const unique = all.filter(e => {
-      const key = `${e.code || e.name}|${e.date}|${e.time}|${e.room}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return {
-      exams: unique.filter(e => e.name || e.code),
-      unnamed: unique.filter(e => !e.name && !e.code),
-    };
-  } finally {
-    await task.destroy();
-  }
+export function parseSchedule(pages: PageData[]): ParseOutput {
+  const years = detectYear(pages);
+  const vocab = buildVocabulary(pages.map(p => p.items));
+  const all: Exam[] = pages.flatMap((page, i) => parsePage(page, i + 1, years, vocab));
+  // The same exam can appear on several pages (e.g. old and new curriculum); keep the first.
+  const seen = new Set<string>();
+  const unique = all.filter(e => {
+    const key = `${e.code || e.name}|${e.date}|${e.time}|${e.room}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return {
+    exams: unique.filter(e => e.name || e.code),
+    unnamed: unique.filter(e => !e.name && !e.code),
+  };
 }
