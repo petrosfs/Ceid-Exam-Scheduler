@@ -319,7 +319,9 @@ export async function parseSchedulePdf(
   data: ArrayBuffer,
   onProgress?: (fraction: number) => void,
 ): Promise<ParseOutput> {
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
+  // The file is only read for its text and drawn lines; nothing in it is rendered or executed.
+  const task = pdfjs.getDocument({ data: new Uint8Array(data), enableXfa: false });
+  const doc = await task.promise;
   try {
     const years = await detectYear(doc);
     const pages: PdfPage[] = [];
@@ -349,6 +351,6 @@ export async function parseSchedulePdf(
       unnamed: unique.filter(e => !e.name && !e.code),
     };
   } finally {
-    doc.destroy();
+    await task.destroy();
   }
 }
