@@ -1,0 +1,43 @@
+name: 🐞 Πρόβλημα / Bug
+description: Κάτι δεν δουλεύει όπως θα έπρεπε (π.χ. λάθος ώρα ή μάθημα από το PDF).
+title: "[Πρόβλημα] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ Τα issues είναι **δημόσια**. Μην γράφεις προσωπικά στοιχεία.
+        ⚠️ Issues are **public**. Do not include personal information.
+  - type: textarea
+    id: what
+    attributes:
+      label: Τι έγινε; / What happened?
+      description: Τι περίμενες να γίνει και τι έγινε τελικά.
+    validations:
+      required: true
+  - type: input
+    id: pdf
+    attributes:
+      label: Ποιο PDF εξεταστικής; / Which exam PDF?
+      description: Η εξεταστική και, αν γίνεται, το link του PDF από τη σελίδα του τμήματος.
+      placeholder: π.χ. Φεβρουάριος 2027
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Βήματα / Steps
+      description: Τι πάτησες για να εμφανιστεί το πρόβλημα (προαιρετικό).
+    validations:
+      required: false
+  - type: dropdown
+    id: device
+    attributes:
+      label: Συσκευή / Device
+      options:
+        - Κινητό Android / Android phone
+        - iPhone
+        - Υπολογιστής / Computer
+        - Άλλο / Other
+    validations:
+      required: false

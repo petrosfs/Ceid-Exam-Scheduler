@@ -54,6 +54,10 @@ npm run fixtures -- feb2027=/path/to/schedule.pdf
 
 Αν το τμήμα αλλάξει τη μορφή του PDF, τα tests θα το δείξουν.
 
+## Σχόλια και προτάσεις
+
+Έχεις μια ιδέα ή βρήκες πρόβλημα; [Άνοιξε ένα issue](https://github.com/petrosfs/Ceid-Exam-Scheduler/issues/new/choose) (χρειάζεται λογαριασμός GitHub).
+
 ## Άδεια
 
 [MIT](LICENSE)
