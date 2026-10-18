@@ -3,6 +3,7 @@ import { Language } from '../types';
 const el = {
   appTitle: 'Πρόγραμμα CEID',
   university: 'Πανεπιστήμιο Πατρών',
+  version: 'Έκδοση',
   uploadTitle: 'Μεταφόρτωση Προγράμματος',
   uploadDesc: 'Επιλέξτε το PDF με το πρόγραμμα εξεταστικής του τμήματος.\nΗ ανάγνωση γίνεται μόνο στη συσκευή σας· το αρχείο δεν ανεβαίνει πουθενά.',
   selectFile: 'Επιλογή Αρχείου PDF',
@@ -120,6 +121,7 @@ type Strings = typeof el;
 const en: Strings = {
   appTitle: 'CEID Scheduler',
   university: 'University of Patras',
+  version: 'Version',
   uploadTitle: 'Upload Exam Schedule',
   uploadDesc: "Select the department's exam schedule PDF.\nIt is read only on your device; the file is never uploaded.",
   selectFile: 'Select PDF File',

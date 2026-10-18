@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
+
+const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 import type { Plugin } from 'vite';
 
 /**
@@ -36,6 +38,10 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+  },
+  // App version shown in the UI, taken from package.json at build time.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [react(), tailwindcss(), serviceWorker()],
   build: {

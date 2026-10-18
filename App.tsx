@@ -362,6 +362,7 @@ function AppContent() {
           </div>
         )}
       </div>
+      <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">{t.version} {__APP_VERSION__}</p>
     </div>
   );
 
